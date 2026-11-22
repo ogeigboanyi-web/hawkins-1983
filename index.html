@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HAWKINS — November 1983</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#000;
+    font-family:"Courier New", monospace; color:#cfd8e3; user-select:none; }
+  canvas { display:block; }
+
+  /* ---------- generic overlay ---------- */
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(2,4,10,.92); z-index:40; transition:opacity .35s; }
+  .hidden { opacity:0; pointer-events:none; }
+
+  /* ---------- title / map ---------- */
+  #menu { z-index:60; flex-direction:column; gap:26px; text-align:center; }
+  #menu h1 { font-size:clamp(28px,6vw,58px); letter-spacing:.35em; color:#e11d2e;
+    text-shadow:0 0 22px rgba(225,29,46,.8), 0 0 60px rgba(225,29,46,.35); font-weight:bold; }
+  #menu h2 { font-size:clamp(12px,2vw,18px); letter-spacing:.5em; color:#8fa3bd; font-weight:normal; }
+  #cards { display:flex; gap:22px; flex-wrap:wrap; justify-content:center; padding:0 16px; }
+  .card { width:240px; padding:22px 18px 18px; border:1px solid #2a3a52; background:#0a0f1a;
+    cursor:pointer; transition:all .2s; position:relative; }
+  .card:hover { border-color:#e11d2e; box-shadow:0 0 24px rgba(225,29,46,.35); transform:translateY(-4px); }
+  .card .num { position:absolute; top:10px; left:12px; font-size:11px; color:#4d6078; }
+  .card .icon { font-size:40px; margin-bottom:10px; filter:saturate(.7); }
+  .card h3 { font-size:15px; letter-spacing:.15em; color:#e8eef5; margin-bottom:6px; }
+  .card p { font-size:11px; line-height:1.6; color:#7d90a8; }
+  #controls { font-size:11px; letter-spacing:.1em; color:#5d7390; line-height:1.9; }
+  #controls b { color:#aebfd4; }
+  #tagline { font-size:11px; letter-spacing:.3em; color:#3d4f68; }
+
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; z-index:20; }
+  #crosshair { position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px;
+    border-radius:50%; border:1px solid rgba(255,255,255,.75); box-shadow:0 0 4px rgba(0,0,0,.8); }
+  #locTag { position:absolute; left:18px; bottom:16px; font-size:12px; letter-spacing:.25em;
+    color:rgba(220,230,245,.85); text-shadow:0 0 8px #000; }
+  #filmTag { position:absolute; right:18px; bottom:16px; font-size:12px; letter-spacing:.15em;
+    color:rgba(220,230,245,.85); text-shadow:0 0 8px #000; }
+  #subjects { position:absolute; right:18px; bottom:38px; font-size:11px; letter-spacing:.15em;
+    color:rgba(160,180,205,.9); text-shadow:0 0 8px #000; }
+  #timeTag { position:absolute; left:18px; top:16px; font-size:11px; letter-spacing:.3em;
+    color:rgba(180,195,215,.8); text-shadow:0 0 8px #000; }
+  #hint { position:absolute; left:50%; bottom:64px; transform:translateX(-50%);
+    font-size:12px; letter-spacing:.15em; color:rgba(230,238,248,.9); text-shadow:0 0 10px #000;
+    opacity:0; transition:opacity .4s; }
+
+  /* ---------- camera viewfinder ---------- */
+  #viewfinder { position:fixed; inset:0; z-index:15; pointer-events:none; opacity:0; transition:opacity .25s; }
+  #viewfinder.on { opacity:1; }
+  #viewfinder .frame { position:absolute; inset:0;
+    box-shadow:inset 0 0 0 3px #111, inset 0 0 0 6px rgba(255,255,255,.12), inset 0 0 180px rgba(0,0,0,.9); }
+  #viewfinder .corner { position:absolute; width:36px; height:36px; border:2px solid rgba(255,255,255,.55); }
+  #viewfinder .c1{ top:8%; left:6%; border-right:none; border-bottom:none; }
+  #viewfinder .c2{ top:8%; right:6%; border-left:none; border-bottom:none; }
+  #viewfinder .c3{ bottom:8%; left:6%; border-right:none; border-top:none; }
+  #viewfinder .c4{ bottom:8%; right:6%; border-left:none; border-top:none; }
+  #viewfinder .reticle { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:26px; height:26px; }
+  #viewfinder .reticle::before, #viewfinder .reticle::after { content:""; position:absolute; background:rgba(255,255,255,.8); }
+  #viewfinder .reticle::before { left:50%; top:0; bottom:0; width:1px; }
+  #viewfinder .reticle::after { top:50%; left:0; right:0; height:1px; }
+  #vfInfo { position:absolute; left:8%; bottom:11%; font-size:12px; letter-spacing:.2em;
+    color:rgba(255,255,255,.85); text-shadow:0 0 6px #000; }
+  #vfDate { position:absolute; right:9%; bottom:11%; font-size:14px; letter-spacing:.15em;
+    color:rgba(255,180,80,.95); text-shadow:0 0 6px #000; font-weight:bold; }
+  #vfTop { position:absolute; left:50%; top:9%; transform:translateX(-50%); font-size:12px;
+    letter-spacing:.35em; color:rgba(255,255,255,.8); text-shadow:0 0 6px #000; }
+
+  /* ---------- flash + vignette ---------- */
+  #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:30; transition:opacity .12s; }
+  #vignette { position:fixed; inset:0; pointer-events:none; z-index:10;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,5,.55) 100%); }
+
+  /* ---------- toast ---------- */
+  #toasts { position:fixed; left:50%; top:14%; transform:translateX(-50%); z-index:35;
+    display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+  .toast { padding:10px 22px; background:rgba(8,12,22,.9); border:1px solid #35507a;
+    font-size:12px; letter-spacing:.15em; color:#dfe9f5; animation:tin .3s ease-out; text-align:center; }
+  .toast.red { border-color:#e11d2e; color:#ffd7db; }
+  @keyframes tin { from { opacity:0; transform:translateY(-12px);} to { opacity:1; transform:none;} }
+
+  /* ---------- album ---------- */
+  #album { z-index:55; flex-direction:column; gap:16px; }
+  #album h2 { letter-spacing:.4em; color:#e11d2e; font-size:20px; text-shadow:0 0 14px rgba(225,29,46,.5); }
+  #albumGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr));
+    gap:14px; max-width:900px; max-height:70vh; overflow:auto; padding:8px; }
+  .photoWrap { background:#0b0f18; border:1px solid #2a3a52; padding:8px 8px 4px; position:relative; }
+  .photoWrap img { width:100%; display:block; }
+  .photoWrap .stamp { font-size:10px; color:#ffab4d; letter-spacing:.15em; padding:5px 2px 2px; font-weight:bold; }
+  .photoWrap .del { position:absolute; top:2px; right:5px; color:#e11d2e; cursor:pointer;
+    font-size:14px; pointer-events:auto; }
+  #albumEmpty { color:#5d7390; font-size:12px; letter-spacing:.2em; padding:30px; }
+  #albumHint { font-size:11px; letter-spacing:.2em; color:#5d7390; }
+
+  /* ---------- pause ---------- */
+  #pause { z-index:50; flex-direction:column; gap:14px; background:rgba(2,4,10,.75); }
+  #pause h2 { letter-spacing:.4em; color:#e8eef5; font-size:22px; }
+  #pause p { font-size:12px; letter-spacing:.15em; color:#7d90a8; line-height:2; text-align:center; }
+
+  /* ---------- fade ---------- */
+  #fade { position:fixed; inset:0; background:#000; z-index:45; opacity:1; pointer-events:none; transition:opacity .6s; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+
+<div id="vignette"></div>
+
+<div id="viewfinder">
+  <div class="frame"></div>
+  <div class="corner c1"></div><div class="corner c2"></div>
+  <div class="corner c3"></div><div class="corner c4"></div>
+  <div class="reticle"></div>
+  <div id="vfTop">CANON AE-1 &nbsp;●&nbsp; FD 50mm 1:1.8</div>
+  <div id="vfInfo">ISO 400 &nbsp; f/2.8 &nbsp; 1/60</div>
+  <div id="vfDate">NOV '83</div>
+</div>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="timeTag">HAWKINS, IN — 11:47 PM · NOV 1983</div>
+  <div id="locTag">MIRKWOOD</div>
+  <div id="subjects">SUBJECTS PHOTOGRAPHED: 0 / 9</div>
+  <div id="filmTag">FILM: 24 exposures</div>
+  <div id="hint"></div>
+</div>
+
+<div id="flash"></div>
+<div id="toasts"></div>
+
+<div id="menu" class="overlay">
+  <h1>HAWKINS</h1>
+  <h2>NOVEMBER · 1983</h2>
+  <p id="tagline">The night Will Byers disappeared. Bring your camera.</p>
+  <div id="cards">
+    <div class="card" data-loc="mirkwood">
+      <span class="num">[1]</span><div class="icon">🌲</div>
+      <h3>MIRKWOOD</h3>
+      <p>The forest road out of Cornwallis. A wall of trees, a police cruiser, and something wrong in the air.</p>
+    </div>
+    <div class="card" data-loc="harrington">
+      <span class="num">[2]</span><div class="icon">🏊</div>
+      <h3>HARRINGTON BACKYARD</h3>
+      <p>The pool, the patio, the lit windows. Steve is home. You shouldn't be.</p>
+    </div>
+    <div class="card" data-loc="school">
+      <span class="num">[3]</span><div class="icon">🏫</div>
+      <h3>HAWKINS MIDDLE SCHOOL</h3>
+      <p>The gym, the empty lot, the sign with the tiger paw. Where the campaign was interrupted.</p>
+    </div>
+  </div>
+  <div id="controls">
+    <b>W A S D / ARROWS</b> move &nbsp;·&nbsp; <b>SPACE</b> jump &nbsp;·&nbsp; <b>SHIFT</b> run &nbsp;·&nbsp; <b>MOUSE</b> look<br>
+    <b>E</b> camera viewfinder &nbsp;·&nbsp; <b>F / CLICK</b> take photo &nbsp;·&nbsp; <b>T</b> flashlight &nbsp;·&nbsp; <b>TAB</b> album &nbsp;·&nbsp; <b>M</b> travel<br>
+    <b>R</b> new film roll &nbsp;·&nbsp; <b>1 2 3</b> quick travel
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <h2>PAUSED</h2>
+  <p>CLICK TO RESUME<br><br>E — camera &nbsp;·&nbsp; F — photograph &nbsp;·&nbsp; TAB — album &nbsp;·&nbsp; M — travel</p>
+</div>
+
+<div id="album" class="overlay hidden">
+  <h2>FOTOLOG — NOV 1983</h2>
+  <div id="albumGrid"></div>
+  <div id="albumEmpty">NOTHING DEVELOPED YET</div>
+  <div id="albumHint">CLICK AN X TO CUT A PRINT · TAB TO CLOSE</div>
+</div>
+
+<div id="fade"></div>
+
+<script type="module" src="game.js"></script>
+</body>
+</html>
